@@ -1,0 +1,8 @@
+debug-chrome/
+chrome-user-data/
+*.log
+*.err
+x-browser-mcp
+x-search-mcp
+*.test
+*.out
