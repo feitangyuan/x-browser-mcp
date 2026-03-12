@@ -28,6 +28,15 @@ func NewAppServer(service *SearchService) *AppServer {
 	}
 }
 
+func newMCPHTTPHandler(server *mcp.Server) http.Handler {
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return server
+	}, &mcp.StreamableHTTPOptions{
+		JSONResponse: true,
+		Stateless:    true,
+	})
+}
+
 func (s *AppServer) Start(port string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.healthHandler)
@@ -36,9 +45,7 @@ func (s *AppServer) Start(port string) error {
 	mux.HandleFunc("/api/v1/home", s.homeTimelineHandler)
 	mux.HandleFunc("/api/v1/search", s.searchHandler)
 
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return s.mcpServer
-	}, &mcp.StreamableHTTPOptions{JSONResponse: true})
+	mcpHandler := newMCPHTTPHandler(s.mcpServer)
 	mux.Handle("/mcp", mcpHandler)
 	mux.Handle("/mcp/", mcpHandler)
 
