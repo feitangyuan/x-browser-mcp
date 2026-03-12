@@ -2,7 +2,7 @@
 
 `x-browser-mcp` lets local agents read X (Twitter) from a real logged-in browser session.
 
-It is a browser-backed MCP server built for workflows where tools like Claude Code, Codex, and OpenClaw need fresh X signals without going through the official X API.
+It is a browser-backed MCP server built for workflows where tools like Claude Code, Codex, and MCP-capable local agents need fresh X signals without going through the official X API.
 
 Out of the box, it can:
 
@@ -112,7 +112,7 @@ That includes:
 
 - Claude Code
 - Codex
-- OpenClaw
+- OpenClaw ACP/acpx-backed sessions
 
 ### Claude Code / Codex
 
@@ -151,6 +151,28 @@ Example runtime config:
   }
 }
 ```
+
+### Support matrix
+
+- Claude Code: supported directly through the MCP endpoint
+- Codex: supported directly through the MCP endpoint
+- OpenClaw ACP/acpx-backed sessions: supported through `mcp-remote`
+- OpenClaw Feishu main chat sessions: not directly supported today through this ACPX injection path
+
+The current OpenClaw ACPX `mcpServers` integration is useful for ACP/acpx-backed sessions, but it does not automatically surface this MCP server inside ordinary Feishu main-chat sessions.
+
+### OpenClaw Feishu fallback
+
+For OpenClaw running through Feishu main-chat sessions, the practical default is to delegate X tasks to `coding-agent` / `Codex`, and let Codex use the local `x-browser-mcp` server.
+
+In other words:
+
+- Feishu main chat -> OpenClaw
+- OpenClaw routes X/Twitter requests to Codex
+- Codex calls `x-browser-mcp`
+- results are returned back to the Feishu conversation
+
+This is currently the smallest reliable path when you want X access inside Feishu without relying on Browser Relay.
 
 ## Operational notes
 
