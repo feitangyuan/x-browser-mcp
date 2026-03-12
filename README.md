@@ -1,15 +1,17 @@
 # x-browser-mcp
 
-`x-browser-mcp` is a browser-backed MCP server for reading X (Twitter) from a local logged-in session.
+`x-browser-mcp` lets local agents read X (Twitter) from a real logged-in browser session.
 
-It exposes a small set of MCP tools and HTTP endpoints for:
+It is a browser-backed MCP server built for workflows where tools like Claude Code, Codex, and OpenClaw need fresh X signals without going through the official X API.
+
+Out of the box, it can:
 
 - checking whether the local X session is ready
 - starting an interactive login flow when needed
 - reading the X home timeline
 - searching recent X discussions
 
-Instead of using the official X API, it reuses an isolated local browser profile and a background headless browser. This makes it useful for workflows where you want real-time X signals inside local coding agents such as Claude Code, Codex, or OpenClaw.
+Instead of using the official X API, it reuses an isolated local browser profile plus a background headless browser. The result is a local MCP service that feels much closer to "let the agent check X for me" than "open another tab and go search manually."
 
 ## What it does
 
@@ -103,6 +105,14 @@ curl 'http://127.0.0.1:18110/api/v1/home?limit=10'
 ```
 
 ## Client integration
+
+`x-browser-mcp` works with any MCP client that can talk to a streamable HTTP MCP endpoint.
+
+That includes:
+
+- Claude Code
+- Codex
+- OpenClaw
 
 ### Claude Code / Codex
 
