@@ -29,6 +29,7 @@ type LaunchdManagedBrowserController struct {
 	plist    string
 	domain   string
 	stopWait time.Duration
+	execCommand func(context.Context, string, ...string) *exec.Cmd
 }
 
 type BrowserSession struct {
@@ -196,6 +197,21 @@ func BuildManualLoginCommandArgs(cfg Config) []string {
 	return args
 }
 
+func BuildManagedBrowserCommandArgs(cfg Config) []string {
+	args := []string{cfg.BrowserBin}
+	if cfg.UserDataDir != "" {
+		args = append(args, "--user-data-dir="+cfg.UserDataDir)
+	}
+	if cfg.ProfileDirectory != "" {
+		args = append(args, "--profile-directory="+cfg.ProfileDirectory)
+	}
+	if port := cfg.RemoteDebugPort(); port > 0 {
+		args = append(args, fmt.Sprintf("--remote-debugging-port=%d", port))
+	}
+	args = append(args, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "about:blank")
+	return args
+}
+
 func LaunchManualLoginBrowser(cfg Config) (*exec.Cmd, error) {
 	if strings.TrimSpace(cfg.BrowserBin) == "" {
 		return nil, fmt.Errorf("browser binary path is required for manual login")
@@ -214,6 +230,24 @@ func LaunchManualLoginBrowser(cfg Config) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
+func LaunchManagedHeadlessBrowser(cfg Config) (*exec.Cmd, error) {
+	if strings.TrimSpace(cfg.BrowserBin) == "" {
+		return nil, fmt.Errorf("browser binary path is required for managed browser launch")
+	}
+	if cfg.UserDataDir != "" {
+		if err := os.MkdirAll(cfg.UserDataDir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+
+	args := BuildManagedBrowserCommandArgs(cfg)
+	cmd := exec.Command(args[0], args[1:]...)
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
 func NewLaunchdManagedBrowserController(cfg Config) ManagedBrowserController {
 	if !cfg.ManagedBrowserConfigured() {
 		return nil
@@ -223,6 +257,7 @@ func NewLaunchdManagedBrowserController(cfg Config) ManagedBrowserController {
 		plist:    cfg.ManagedBrowserPlist,
 		domain:   fmt.Sprintf("gui/%d", os.Getuid()),
 		stopWait: 8 * time.Second,
+		execCommand: exec.CommandContext,
 	}
 }
 
@@ -230,7 +265,7 @@ func (c *LaunchdManagedBrowserController) Suspend(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
-	if err := exec.CommandContext(ctx, "launchctl", "bootout", c.domain, c.plist).Run(); err != nil {
+	if err := c.run(ctx, "launchctl", "bootout", c.domain, c.plist); err != nil {
 		if strings.Contains(err.Error(), "No such process") || strings.Contains(err.Error(), "No such file or directory") {
 			return nil
 		}
@@ -243,14 +278,32 @@ func (c *LaunchdManagedBrowserController) Resume(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, "launchctl", "bootstrap", c.domain, c.plist)
-	if err := cmd.Run(); err != nil {
-		if strings.Contains(err.Error(), "service already loaded") {
-			return nil
+	if err := c.run(ctx, "launchctl", "bootstrap", c.domain, c.plist); err != nil {
+		if !strings.Contains(err.Error(), "service already loaded") {
+			return err
 		}
+	}
+	return c.run(ctx, "launchctl", "kickstart", "-k", c.domain+"/"+c.label)
+}
+
+func (c *LaunchdManagedBrowserController) command(ctx context.Context, name string, args ...string) *exec.Cmd {
+	if c.execCommand != nil {
+		return c.execCommand(ctx, name, args...)
+	}
+	return exec.CommandContext(ctx, name, args...)
+}
+
+func (c *LaunchdManagedBrowserController) run(ctx context.Context, name string, args ...string) error {
+	cmd := c.command(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	message := strings.TrimSpace(string(output))
+	if message == "" {
 		return err
 	}
-	return nil
+	return fmt.Errorf("%w: %s", err, message)
 }
 
 func SaveCookies(browser *rod.Browser, cookiesPath string) error {

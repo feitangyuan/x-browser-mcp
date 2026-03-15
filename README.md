@@ -1,29 +1,33 @@
 # x-browser-mcp
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 `x-browser-mcp` lets local agents read X (Twitter) from a real logged-in browser session.
 
-It is a browser-backed MCP server built for workflows where tools like Claude Code, Codex, and MCP-capable local agents need fresh X signals without going through the official X API.
+It is a browser-backed MCP server for workflows where Claude Code, Codex, and other MCP-capable local agents need fresh X signals without paying for the official X API.
 
-Out of the box, it can:
+## What It Does
 
-- checking whether the local X session is ready
-- starting an interactive login flow when needed
-- reading the X home timeline
-- searching recent X discussions
-
-Instead of using the official X API, it reuses an isolated local browser profile plus a background headless browser. The result is a local MCP service that feels much closer to "let the agent check X for me" than "open another tab and go search manually."
-
-## What it does
-
-- Reuses a local X login session from an isolated browser profile
-- Runs a background headless browser for steady day-to-day use
-- Switches to a visible browser window for manual login when the session is missing
-- Returns summaries, representative posts, timestamps, and engagement metrics
+- Checks whether the local X session is ready
+- Starts an interactive login flow when needed
+- Reads the X home timeline
+- Searches recent X discussions
 - Exposes the same capability over MCP and plain HTTP
 
-## Why this exists
+## How It Works
 
-The official X API is expensive for many personal workflows and often does not match the freshness of what you can see directly in the browser.
+`x-browser-mcp` is built around an isolated browser profile.
+
+- The MCP/HTTP service can stay running in the background
+- Browsers are launched only when a request actually needs X access
+- Manual login always opens a visible browser window
+- Normal reads can run in headless mode against the same isolated profile
+
+This keeps the service available to local agents without forcing a permanent browser process to stay alive.
+
+## Why This Exists
+
+The official X API is expensive for many personal workflows and often less aligned with what you can see directly in a real browser session.
 
 This project takes a different route:
 
@@ -49,22 +53,18 @@ The MCP server exposes these tools:
 - `POST /api/v1/search`
 - `POST /mcp`
 
-## How login works
+## Login Model
 
-The service is designed around an isolated browser profile.
+The login flow is intentionally simple:
 
-Normal operation:
+1. Call `start_login`
+2. A visible browser window opens on the isolated profile
+3. Complete X login in that window
+4. Later requests reuse the same profile
 
-- a dedicated headless browser stays alive in the background
-- the MCP server attaches to that browser and reads X from the existing session
+If the session is already valid, the service can keep using the stored profile without asking for login again.
 
-When login is required:
-
-- the service detects that the session is not ready
-- a visible browser window is opened on the same isolated profile
-- after login is confirmed, the service switches back to the background headless browser
-
-## Quick start
+## Quick Start
 
 ### 1. Build
 
@@ -104,9 +104,9 @@ curl -X POST http://127.0.0.1:18110/api/v1/search \
 curl 'http://127.0.0.1:18110/api/v1/home?limit=10'
 ```
 
-## Client integration
+## Client Integration
 
-`x-browser-mcp` works with any MCP client that can talk to a streamable HTTP MCP endpoint.
+`x-browser-mcp` works with MCP clients that can talk to a streamable HTTP MCP endpoint.
 
 That includes:
 
@@ -125,8 +125,6 @@ http://127.0.0.1:18110/mcp
 ### OpenClaw
 
 OpenClaw can attach to this server through ACPX with `mcp-remote`.
-
-Example runtime config:
 
 ```json
 {
@@ -152,36 +150,14 @@ Example runtime config:
 }
 ```
 
-### Support matrix
+## Operational Notes
 
-- Claude Code: supported directly through the MCP endpoint
-- Codex: supported directly through the MCP endpoint
-- OpenClaw ACP/acpx-backed sessions: supported through `mcp-remote`
-- OpenClaw Feishu main chat sessions: not directly supported today through this ACPX injection path
+- This project is meant for local, personal use
+- It depends on a real browser session and local browser state
+- It uses an isolated browser profile instead of your normal daily browser profile
+- It does not rely on the official X API
 
-The current OpenClaw ACPX `mcpServers` integration is useful for ACP/acpx-backed sessions, but it does not automatically surface this MCP server inside ordinary Feishu main-chat sessions.
-
-### OpenClaw Feishu fallback
-
-For OpenClaw running through Feishu main-chat sessions, the practical default is to delegate X tasks to `coding-agent` / `Codex`, and let Codex use the local `x-browser-mcp` server.
-
-In other words:
-
-- Feishu main chat -> OpenClaw
-- OpenClaw routes X/Twitter requests to Codex
-- Codex calls `x-browser-mcp`
-- results are returned back to the Feishu conversation
-
-This is currently the smallest reliable path when you want X access inside Feishu without relying on Browser Relay.
-
-## Operational notes
-
-- This project is meant for local, personal use.
-- It depends on a real browser session and local browser state.
-- It uses conservative caching and rate limiting to avoid hammering X during normal use.
-- It does not rely on the official X API.
-
-## Repository scope
+## Repository Scope
 
 This repository contains the MCP server only.
 
@@ -190,4 +166,4 @@ It does not include:
 - browser profile data
 - local cookies
 - launchd user agents
-- personal OpenClaw or Claude configuration files
+- personal Claude / Codex / OpenClaw config files

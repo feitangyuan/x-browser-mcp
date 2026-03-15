@@ -50,6 +50,7 @@ type SearchService struct {
 
 	managedBrowser    ManagedBrowserController
 	launchManualLogin func(Config) (*exec.Cmd, error)
+	launchManagedBrowser func(Config) (*exec.Cmd, error)
 	waitForRemoteDebug func(context.Context, string) error
 	watchLoginFn      func(*loginSession)
 	newBrowserSession func(context.Context, Config, bool) (*BrowserSession, error)
@@ -63,6 +64,7 @@ func NewSearchService(cfg Config) *SearchService {
 	}
 	s.managedBrowser = NewLaunchdManagedBrowserController(cfg)
 	s.launchManualLogin = LaunchManualLoginBrowser
+	s.launchManagedBrowser = LaunchManagedHeadlessBrowser
 	s.waitForRemoteDebug = WaitForRemoteDebugEndpoint
 	s.watchLoginFn = s.watchLogin
 	s.newBrowserSession = NewBrowserSession
@@ -447,6 +449,12 @@ func (s *SearchService) openBrowserSession(ctx context.Context, headless bool) (
 	}
 
 	session, err := s.newBrowserSession(ctx, s.cfg, headless)
+	if err != nil && s.cfg.RemoteDebugMode() {
+		resumeErr := s.ensureManagedBrowserReady(ctx)
+		if resumeErr == nil {
+			session, err = s.newBrowserSession(ctx, s.cfg, headless)
+		}
+	}
 	if err != nil {
 		if s.cfg.ProfileMode() {
 			s.profileUseMu.Unlock()
@@ -460,6 +468,44 @@ func (s *SearchService) openBrowserSession(ctx context.Context, headless bool) (
 		}
 	}
 	return session, nil
+}
+
+func (s *SearchService) ensureManagedBrowserReady(ctx context.Context) error {
+	if !s.cfg.RemoteDebugMode() || s.managedBrowser == nil {
+		return s.startManagedBrowserDirectly(ctx, nil)
+	}
+	if s.remoteLoginInProgress() {
+		return fmt.Errorf("interactive remote login is in progress")
+	}
+	if err := s.managedBrowser.Resume(ctx); err != nil {
+		return s.startManagedBrowserDirectly(ctx, err)
+	}
+	if err := s.waitForRemoteDebug(ctx, s.cfg.RemoteDebugURL); err != nil {
+		return s.startManagedBrowserDirectly(ctx, err)
+	}
+	return nil
+}
+
+func (s *SearchService) remoteLoginInProgress() bool {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	return s.login != nil && s.login.resumeManagedBrowser && time.Now().Before(s.login.deadline)
+}
+
+func (s *SearchService) startManagedBrowserDirectly(ctx context.Context, resumeErr error) error {
+	if s.launchManagedBrowser == nil {
+		if resumeErr != nil {
+			return resumeErr
+		}
+		return fmt.Errorf("managed browser launcher is not configured")
+	}
+	if _, err := s.launchManagedBrowser(s.cfg); err != nil {
+		if resumeErr != nil {
+			return fmt.Errorf("resume managed browser: %v; direct launch failed: %w", resumeErr, err)
+		}
+		return err
+	}
+	return s.waitForRemoteDebug(ctx, s.cfg.RemoteDebugURL)
 }
 
 func (s *SearchService) watchLogin(login *loginSession) {

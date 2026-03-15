@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type SearchRequest struct {
 	Query string `json:"query"`
@@ -34,6 +37,18 @@ type SearchResult struct {
 	RelatedUsers []RelatedUser `json:"related_users"`
 	FetchedAt    time.Time     `json:"fetched_at"`
 	Cached       bool          `json:"cached"`
+}
+
+func (r SearchResult) MarshalJSON() ([]byte, error) {
+	type alias SearchResult
+	payload := alias(r)
+	if payload.Posts == nil {
+		payload.Posts = []XPost{}
+	}
+	if payload.RelatedUsers == nil {
+		payload.RelatedUsers = []RelatedUser{}
+	}
+	return json.Marshal(payload)
 }
 
 type RelatedUser struct {
@@ -102,4 +117,16 @@ type ErrorResponse struct {
 type SuccessResponse struct {
 	Success bool `json:"success"`
 	Data    any  `json:"data"`
+}
+
+func (r HomeTimelineResult) MarshalJSON() ([]byte, error) {
+	type alias HomeTimelineResult
+	payload := alias(r)
+	if payload.Posts == nil {
+		payload.Posts = []XPost{}
+	}
+	if payload.RelatedUsers == nil {
+		payload.RelatedUsers = []RelatedUser{}
+	}
+	return json.Marshal(payload)
 }
